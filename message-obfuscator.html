@@ -1,0 +1,202 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';">
+
+    <meta charset="UTF-8">
+    <title>RelationRhythm Obfuscator</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            max-width: 700px; 
+            margin: auto; 
+            padding: 1em; 
+            line-height: 1.6;
+        }
+        textarea { 
+            width: 100%; 
+            height: 300px; 
+            margin-top: 1em; 
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            padding: 0.5em;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+        }
+        input[type="file"] { 
+            margin-top: 1em; 
+            width: 100%;
+            max-width: 400px;
+        }
+        button { 
+            margin-top: 1em; 
+            padding: 0.75em 1.5em; 
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 1em;
+            padding: 0.5em;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        @media (max-width: 600px) {
+            body { padding: 0.5em; }
+            button { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+<h1>🛡️ RelationRhythm Chat Obfuscator</h1>
+<p>This tool runs entirely in your browser. Your data is never uploaded or stored.</p>
+
+<input type="file" id="fileInput" accept=".txt">
+<button id="processBtn">Obfuscate</button>
+<div id="status" class="status"></div>
+
+<h2>Obfuscated Output</h2>
+<textarea id="outputArea" readonly placeholder="Obfuscated chat will appear here..."></textarea>
+<button id="downloadBtn" disabled>Download Obfuscated File</button>
+
+<script>
+    function showStatus(message, type = 'success') {
+        const status = document.getElementById('status');
+        status.textContent = message;
+        status.className = `status ${type}`;
+        status.style.display = 'block';
+        setTimeout(() => {
+            status.style.display = 'none';
+        }, 3000);
+    }
+
+    function processFile() {
+        const fileInput = document.getElementById('fileInput');
+        const outputArea = document.getElementById('outputArea');
+        const processBtn = document.getElementById('processBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        
+        if (!fileInput.files.length) {
+            showStatus('Please select a file first.', 'error');
+            return;
+        }
+
+        processBtn.disabled = true;
+        processBtn.textContent = 'Processing...';
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const lines = e.target.result.split('\n');
+                const nameMap = {};
+                let userCount = 0;
+                let processedCount = 0;
+
+                const obfuscatedLines = lines
+                    .filter(line => line.match(/^\d{2}\/\d{2}\/\d{2,4}, \d{2}:\d{2} - /))
+                    .map(line => {
+                        // Check if this is a user message (has a colon after the name)
+                        const userMatch = line.match(/^(\d{2}\/\d{2}\/\d{2,4}, \d{2}:\d{2}) - ([^:]+): (.+)/);
+                        if (userMatch) {
+                            const timestamp = userMatch[1];
+                            const name = userMatch[2].trim();
+                            const content = userMatch[3];
+                            
+                            if (!nameMap[name]) {
+                                userCount++;
+                                nameMap[name] = 'User ' + userCount;
+                            }
+                            
+                            // Determine message type
+                            let messageType;
+                            if (content.includes('<Media omitted>') || content.includes('image omitted') || 
+                                content.includes('video omitted') || content.includes('audio omitted') ||
+                                content.includes('document omitted') || content.includes('GIF omitted')) {
+                                messageType = 'MEDIA';
+                            } else if (content.includes('You deleted this message') || content.includes('This message was deleted')) {
+                                messageType = 'DELETED';
+                            } else if (content.trim() === '') {
+                                messageType = 'EMPTY';
+                            } else {
+                                messageType = `TEXT(${content.length})`;
+                            }
+                            
+                            processedCount++;
+                            return `${timestamp} - ${nameMap[name]}: ${messageType}`;
+                        } else {
+                            // This is a system message (no colon), skip it
+                            return '';
+                        }
+                    });
+
+                const result = obfuscatedLines.filter(l => l).join('\n');
+                outputArea.value = result;
+                
+                if (result) {
+                    downloadBtn.disabled = false;
+                    showStatus(`Successfully processed ${processedCount} messages from ${userCount} users.`);
+                } else {
+                    showStatus('No valid chat messages found in the file.', 'error');
+                }
+            } catch (error) {
+                showStatus('Error processing file: ' + error.message, 'error');
+            } finally {
+                processBtn.disabled = false;
+                processBtn.textContent = 'Obfuscate';
+            }
+        };
+        
+        reader.onerror = function() {
+            showStatus('Error reading file.', 'error');
+            processBtn.disabled = false;
+            processBtn.textContent = 'Obfuscate';
+        };
+        
+        reader.readAsText(fileInput.files[0]);
+    }
+
+    function downloadOutput() {
+        const text = document.getElementById('outputArea').value;
+        if (!text) {
+            showStatus('No obfuscated content to download.', 'error');
+            return;
+        }
+        
+        const blob = new Blob([text], { type: 'text/plain' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'obfuscated_chat.txt';
+        link.click();
+        showStatus('File downloaded successfully!');
+    }
+
+    // Add event listeners when the DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('processBtn').addEventListener('click', processFile);
+        document.getElementById('downloadBtn').addEventListener('click', downloadOutput);
+    });
+</script>
+</body>
+</html>
